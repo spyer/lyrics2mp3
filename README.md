@@ -1,5 +1,4 @@
 # lyrics2mp3 
-python 3
 
 Parse lyrics and add them into mp3 files (via id tags).  
 Lyrics can then be viewed on iPhone, iTunes and other players.  
@@ -13,7 +12,7 @@ What script does:
 Installation:  
 
 ```
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 git clone https://github.com/spyer/lyrics2mp3.git
 ```
 
