@@ -31,7 +31,7 @@ required = parser.add_argument_group("required arguments")
 optional = parser.add_argument_group("optional arguments")
 
 required.add_argument("--dir", nargs=1, help="Directory to search for music files")
-optional.add_argument('--write_on_not_found', action='store_true')
+optional.add_argument("--write_on_not_found", action="store_true")
 
 args = parser.parse_args()
 
@@ -67,7 +67,7 @@ def parse_azlyrics(html, artist, title):
     soup = BeautifulSoup(html, "html.parser")
     found_td = soup.find("td", class_="text-left")
 
-    ret = '...' if args.write_on_not_found else None
+    ret = "..." if args.write_on_not_found else None
 
     href = None
     if found_td is not None:
@@ -109,6 +109,15 @@ def get_lyrics(artist, title):
         headers=headers,
     )
     parsed_lyrics = parse_azlyrics(resp.text, artist=artist, title=title)
+
+    if parsed_lyrics is None and "(" in artist or "(" in title:
+        print("Trying without paretheses")
+        if "(" in artist:
+            artist = artist[: artist.index("(")].strip()
+        if "(" in title:
+            title = title[: title.index("(")].strip()
+        parsed_lyrics = get_lyrics(artist, title)
+
     return parsed_lyrics
 
 
@@ -122,14 +131,19 @@ for dir_path, dirs, files in os.walk(directory):
             audiofile = taglib.File(file_path)
             old_lyrics = audiofile.tags.get("LYRICS", [""])[0]
 
-            if old_lyrics is not None and len(old_lyrics) > 10 or args.write_on_not_found and old_lyrics == '...':
-                print(f"lyrics found in music file: {file_path} skipping")
+            if (
+                old_lyrics is not None
+                and len(old_lyrics) > 10
+                or args.write_on_not_found
+                and old_lyrics == "..."
+            ):
+                print(f"Lyrics found in music file: {file_path} skipping")
                 continue
             try:
                 search_artist = audiofile.tags["ARTIST"][0].lower()
                 search_title = audiofile.tags["TITLE"][0].lower()
             except KeyError:
-                print("no artist or title in music file")
+                print("No artist or title in music file")
                 continue
 
             lyrics = get_lyrics(artist=search_artist, title=search_title)
