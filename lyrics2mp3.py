@@ -1,122 +1,153 @@
-import requests
-from bs4 import BeautifulSoup
+import taglib
+
 import argparse
 import os
 import sys
-import taglib
-import time
-import random
 
-'''
-Lyrics2mp3 
-1. Scans directory for mp3 files.
+import lyrics_az
+import lyrics_lg
+
+"""
+Lyrics2mp3
+1. Scans directory for music files.
 2. Searches lyrics for each song on azlyrics.com
-3. Inserts lyrics into mp3 file, or '...' if not found
-'''
+3. If 'write_on_not_found', inserts lyrics into music file, or '...' if not found
+"""
 
-headers = {'User-Agent': 'Mozilla/5.0 (X11; Windows x86_64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                         'Chrome/62.0.3239.84 Safari/537.36'}
-
-
-search_url = 'http://search.azlyrics.com/search.php?q='
-
-parser = argparse.ArgumentParser(description='lyrics2mp3: Find lyrics and add them into mp3 files')
+parser = argparse.ArgumentParser(
+    description="lyrics2mp3: Find lyrics and add them into music files"
+)
 parser._action_groups.pop()
 
-required = parser.add_argument_group('required arguments')
-optional = parser.add_argument_group('optional arguments')
+# required = parser.add_argument_group("required arguments")
+optional = parser.add_argument_group("optional arguments")
+file_source = parser.add_mutually_exclusive_group(required=True)
 
-required.add_argument('--dir', nargs=1, help='Directory to search for mp3 files')
+file_source.add_argument("--dir", help="Directory to search for music files")
+file_source.add_argument("--m3u", help="Playlist to search for music files")
+
+optional.add_argument(
+    "--write_on_not_found",
+    action="store_true",
+    help="If passed in, will write '...' on files with no lyrics found.",
+)
+optional.add_argument("--genius_token", help="API key for genius.com music database")
+optional.add_argument("--verbose", "-v", action="store_true", help="Lots of debug info")
+
 
 args = parser.parse_args()
 
-if args.dir is None:
-    parser.print_help()
-    sys.exit(0)
-
-if args.dir[0] is None or not os.path.isdir(args.dir[0]):
-    print('Directory "%s" not found.' % args.dir[0])
+if not (args.dir is None or os.path.isdir(args.dir)):
+    print(f'Directory "{args.dir}" not found.')
     sys.exit(1)
 
-directory = args.dir[0]
+directory = args.dir
+
+if args.m3u is not None:
+    if not os.path.isfile(args.m3u):
+        print(f'File "{args.m3u}" not found.')
+        sys.exit(1)
+
+    if not args.m3u.endswith(".m3u"):
+        print(f'Playlist "{args.m3u}" is not M3U format.')
+        sys.exit(1)
+
+playlist = args.m3u
+
+lyrics_lg.init_genius(args.genius_token)
 
 
-def parse_single_song(href):
-    time.sleep(random.randint(1, 9))
+def get_lyrics(artist, title, album_artist=None):
+    # LyricsGenius
+    parsed_lyrics = lyrics_lg.lg_request(artist, title, verbose=args.verbose)
 
-    resp = requests.get(url=href, headers=headers,)
-    soup = BeautifulSoup(resp.text, "html.parser")
-    parsed_lyrics = soup.find("div", class_="col-xs-12 col-lg-8 text-center").contents[16].get_text()
+    # AZ Lyrics
+    if parsed_lyrics is None:
+        parsed_lyrics = lyrics_az.az_request(artist, title, verbose=args.verbose)
+
+    # fuzzy match
+    if parsed_lyrics is None and "(" in artist or "(" in title:
+        if args.verbose:
+            print("Trying without paretheses")
+        if album_artist:
+            artist = album_artist
+        elif "(" in artist:
+            artist = artist[: artist.index("(")].strip()
+        if "(" in title:
+            title = title[: title.index("(")].strip()
+        parsed_lyrics = get_lyrics(artist, title)
+
+    if parsed_lyrics is None and args.write_on_not_found:
+        return "..."
 
     return parsed_lyrics
 
 
-def parse_azlyrics(html, artist, title):
-    soup = BeautifulSoup(html, "html.parser" )
-    found_td = soup.find("td", class_="text-left")
+have_lyrics = 0
+added_lyrics = 0
+no_lyrics_found = 0
 
-    href = None
-    if found_td is not None:
-        try:
-            found_artist_name = found_td.find_all('b')[1].text.lower()
-            found_title = found_td.find('b').text.lower()
-        except IndexError as e:
-            print('Whatever man, I gave up years ago:', e)
-            return '...'
 
-        if artist == found_artist_name or title == found_title:
-            href = found_td.find('a')['href']
-        else:
-            print('Wrong lyrics found:', artist, ' vs ', found_artist_name, ' skipping')
-            return '...'
-    else:
-        print('Lyrics not found on site :(')
-        return '...'
+def parse_file(file_path):
+    global have_lyrics
+    global added_lyrics
+    global no_lyrics_found
 
-    print('href:', href)
+    ext = os.path.splitext(file_path)[-1].lower()
+    if ext not in (".mp3", ".m4a"):
+        return
 
+    audiofile = taglib.File(file_path)
+    old_lyrics = audiofile.tags.get("LYRICS", [""])[0]
+
+    if (
+        old_lyrics is not None
+        and len(old_lyrics) > 10
+        or args.write_on_not_found
+        and old_lyrics == "..."
+    ):
+        if args.verbose:
+            print(f"Lyrics found in music file: {file_path} skipping")
+        have_lyrics += 1
+        return
     try:
-        parsed_lyrics = parse_single_song(href)
-    except Exception as e:
-        print('not found:', e)
-        return '...'
+        search_album_artist = audiofile.tags.get("ALBUMARTIST")
+        if search_album_artist:
+            search_album_artist = search_album_artist[0].lower()
+        search_artist = audiofile.tags["ARTIST"][0].lower()
+        search_title = audiofile.tags["TITLE"][0].lower()
+    except KeyError:
+        if args.verbose:
+            print(f"No artist or title in music file {file_path}")
+        return
 
-    print('parsed lyrics!')
-    return parsed_lyrics
+    lyrics = get_lyrics(
+        artist=search_artist, title=search_title, album_artist=search_album_artist
+    )
+    if lyrics is not None:
+        audiofile.tags["LYRICS"] = lyrics
+        audiofile.save()
+        added_lyrics += 1
+    else:
+        no_lyrics_found += 1
+
+    if not args.verbose:
+        print(
+            f"\r{have_lyrics + added_lyrics + no_lyrics_found} processed: {have_lyrics} existing, {added_lyrics} added, {no_lyrics_found} not found.",
+            end="",
+        )
 
 
-def get_lyrics(artist, title):
-    url = search_url + artist + ' ' + title
+if args.dir:
+    for dir_path, _, files in os.walk(args.dir):
+        for file in files:
+            parse_file(os.path.join(dir_path, file))
 
-    time.sleep(1)
-
-    resp = requests.get(url=url, headers=headers, )
-    parsed_lyrics = parse_azlyrics(resp.text, artist=artist, title=title)
-
-    return parsed_lyrics
-
-
-for dir_path, dirs, files in os.walk(directory):
-    path = dir_path.split(os.sep)
-    for file in files:
-        ext = os.path.splitext(file)[-1].lower()
-        if ext == ".mp3":
-            file_path = os.path.join(dir_path, file)
-
-            audiofile = taglib.File(file_path)
-            old_lyrics = audiofile.tags.get('LYRICS', [''])[0]
-
-            if (old_lyrics is not None and len(old_lyrics) > 10) or old_lyrics == '...':
-                print('lyrics found in mp3 file: ', file_path, ' skipping')
+elif args.m3u:
+    with open(args.m3u) as m:
+        for line in m:
+            line = line.strip()
+            if line.upper().startswith("#EXT"):
                 continue
-            try:
-                search_artist = audiofile.tags['ARTIST'][0].lower()
-                search_title = audiofile.tags['TITLE'][0].lower()
-            except KeyError:
-                print('no artist or title in mp3 file')
-                continue
 
-            lyrics = get_lyrics(artist=search_artist, title=search_title)
-            if lyrics is not None:
-                audiofile.tags['LYRICS'] = lyrics
-                audiofile.save()
+            parse_file(line)
