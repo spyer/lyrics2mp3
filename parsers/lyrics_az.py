@@ -3,14 +3,11 @@ from bs4 import BeautifulSoup
 import time
 import random
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (X11; Windows x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/62.0.3239.84 Safari/537.36"
-}
+from .common import headers
 
 
 def parse_single_song(href):
-    time.sleep(random.randint(1, 9))
+    # time.sleep(random.randint(1, 9))
 
     resp = requests.get(
         url=href,
@@ -30,26 +27,25 @@ def parse_azlyrics(html, artist, title, verbose=False):
     soup = BeautifulSoup(html, "html.parser")
     found_td = soup.find("td", class_="text-left")
 
-    href = None
-    if found_td is not None:
-        try:
-            found_artist_name = found_td.find_all("b")[1].text.lower()
-            found_title = found_td.find("b").text.lower()
-        except IndexError as e:
-            if verbose:
-                print("Whatever man, I gave up years ago: ", e)
-            return None
-
-        if artist == found_artist_name or title == found_title:
-            href = found_td.find("a")["href"]
-        else:
-            if verbose:
-                print(f"Wrong lyrics found: {artist} vs {found_artist_name}, skipping")
-            return None
-    else:
+    if found_td is None:
         if verbose:
             print(f'Lyrics not found on azlyrics for "{title}"')
+    return None
+
+    try:
+        found_artist_name = found_td.find_all("b")[1].text.lower()
+        found_title = found_td.find("b").text.lower()
+    except IndexError as e:
+        if verbose:
+            print("HTML format for site has changed: ", e)
         return None
+
+    if not (artist == found_artist_name or title == found_title):
+        if verbose:
+            print(f"Wrong artist found: {artist} vs {found_artist_name}, skipping")
+        return None
+
+    href = found_td.find("a")["href"]
 
     if verbose:
         print("href: ", href)
@@ -68,8 +64,6 @@ def parse_azlyrics(html, artist, title, verbose=False):
 def az_request(artist, title, verbose=False):
     search_url = "http://search.azlyrics.com/search.php?q="
     az_url = f"{search_url}{artist} {title}"
-
-    # time.sleep(1)
 
     resp = requests.get(
         url=az_url,

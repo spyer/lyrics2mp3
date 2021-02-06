@@ -4,8 +4,10 @@ import argparse
 import os
 import sys
 
-import lyrics_az
-import lyrics_lg
+from parsers import lyrics_az
+from parsers import lyrics_lg
+from parsers import lyrics_lm
+from parsers import lyrics_sl
 
 """
 Lyrics2mp3
@@ -58,12 +60,18 @@ lyrics_lg.init_genius(args.genius_token)
 
 
 def get_lyrics(artist, title, album_artist=None):
-    # LyricsGenius
-    parsed_lyrics = lyrics_lg.lg_request(artist, title, verbose=args.verbose)
+    parsed_lyrics = None
 
-    # AZ Lyrics
-    if parsed_lyrics is None:
-        parsed_lyrics = lyrics_az.az_request(artist, title, verbose=args.verbose)
+    for parser in [
+        lyrics_lg.lg_request,
+        lyrics_az.az_request,
+        lyrics_lm.lm_request,
+        lyrics_sl.sl_request,
+    ]:
+        if parsed_lyrics is not None:
+            break
+
+        parsed_lyrics = parser(artist, title, verbose=args.verbose)
 
     # fuzzy match
     if parsed_lyrics is None and "(" in artist or "(" in title:
@@ -86,19 +94,27 @@ def get_lyrics(artist, title, album_artist=None):
 have_lyrics = 0
 added_lyrics = 0
 no_lyrics_found = 0
+err = 0
 
 
 def parse_file(file_path):
     global have_lyrics
     global added_lyrics
     global no_lyrics_found
+    global err
 
     ext = os.path.splitext(file_path)[-1].lower()
     if ext not in (".mp3", ".m4a"):
         return
 
-    audiofile = taglib.File(file_path)
-    old_lyrics = audiofile.tags.get("LYRICS", [""])[0]
+    try:
+        audiofile = taglib.File(file_path)
+        old_lyrics = audiofile.tags.get("LYRICS", [""])[0]
+    except OSError as e:
+        if args.verbose:
+            print(f"Could not read {file_path}, skipping")
+        err += 1
+        return
 
     if (
         old_lyrics is not None
@@ -107,9 +123,10 @@ def parse_file(file_path):
         and old_lyrics == "..."
     ):
         if args.verbose:
-            print(f"Lyrics found in music file: {file_path} skipping")
+            print(f"Lyrics found in music file: {file_path}, skipping")
         have_lyrics += 1
         return
+
     try:
         search_album_artist = audiofile.tags.get("ALBUMARTIST")
         if search_album_artist:
@@ -119,6 +136,7 @@ def parse_file(file_path):
     except KeyError:
         if args.verbose:
             print(f"No artist or title in music file {file_path}")
+        err += 1
         return
 
     lyrics = get_lyrics(
@@ -131,17 +149,25 @@ def parse_file(file_path):
     else:
         no_lyrics_found += 1
 
+
+def report_progress():
     if not args.verbose:
+        l_sum = have_lyrics + added_lyrics + no_lyrics_found + err
         print(
-            f"\r{have_lyrics + added_lyrics + no_lyrics_found} processed: {have_lyrics} existing, {added_lyrics} added, {no_lyrics_found} not found.",
+            f"\r{l_sum} processed: {have_lyrics} existing, {added_lyrics} added, {no_lyrics_found} not found, {err} errored.",
             end="",
         )
+
+
+def file_lyrics(file_path):
+    parse_file(file_path)
+    report_progress()
 
 
 if args.dir:
     for dir_path, _, files in os.walk(args.dir):
         for file in files:
-            parse_file(os.path.join(dir_path, file))
+            file_lyrics(os.path.join(dir_path, file))
 
 elif args.m3u:
     with open(args.m3u) as m:
@@ -150,4 +176,7 @@ elif args.m3u:
             if line.upper().startswith("#EXT"):
                 continue
 
-            parse_file(line)
+            file_lyrics(line)
+
+if not args.verbose:
+    print()
