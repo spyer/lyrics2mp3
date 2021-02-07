@@ -1,90 +1,65 @@
-import re
-
 import lyricsgenius
 from lyricsgenius.song import Song
 
-genius = None
-
-cruft = re.compile("[\.,\[\]\{\}'’]")
-and_ = re.compile("[\+&]")
+from .lyrics import Lyrics, ValidationError
 
 
-def init_genius(token):
-    global genius
-    if token:
-        genius = lyricsgenius.Genius(token, verbose=True)
+class LyricsLG(Lyrics):
+    def __init__(self, token, verbose=False):
+        super().__init__("Genius", verbose)
+        self.genius = lyricsgenius.Genius(token, verbose=True) if token else None
 
+    def request(self, artist, title):
+        if self.genius is None:
+            if self.verbose > 2:
+                print("Token invalid or missing, skipping Genius")
+            return None
 
-def _clean_str(in_str):
-    return and_.sub("and", cruft.sub("", in_str.lower()))
+        try:
+            response = self.genius.search_songs(f"{artist} {title}")
+        except TypeError:  # token wasn't passed in or found in env
+            print("Genius token invalid or missing")
+            self.genius = None
+            return None
 
+        results = response["hits"]
+        self.validate_lyrics_found(results, title)
 
-def lg_request(artist, title, verbose=False):
-    global genius
-    if genius is None:
-        return None
+        # Reject non-songs (Liner notes, track lists, etc.)
+        result = next(
+            (
+                r["result"]
+                for r in results
+                if self.genius._result_is_lyrics(r["result"]["title"])
+            ),
+            None,
+        )
+        if not result:
+            if self.verbose > 1:
+                print(f"No valid Genius result for {title}.")
+            return None
 
-    # print(title)
-    # breakpoint()
+        lyrics = self.genius.lyrics(result["url"])
 
-    try:
-        response = genius.search_songs(f"{artist} {title}")
-    except TypeError:  # token wasn't passed in or found in env
-        print("Genius token invalid or not found")
-        genius = None
-        return None
+        # Skip results when URL is a 404 or lyrics are missing
+        if not lyrics:
+            if self.verbose > 1:
+                print(f"{title} does not have a valid URL with lyrics. Rejecting.")
+            return None
 
-    results = response["hits"]
+        result = Song(result, lyrics)
 
-    # Exit search if there were no results returned from API
-    if not results:
-        if verbose:
-            print(f"No results found for {title}")
-        return None
+        if not (result and result.lyrics):
+            if self.verbose > 1:
+                print(f'No Genius lyrics found for "{title}"')
+            return None
 
-    # Reject non-songs (Liner notes, track lists, etc.)
-    result = next(
-        (
-            r["result"]
-            for r in results
-            if genius._result_is_lyrics(r["result"]["title"])
-        ),
-        None,
-    )
-    if not result:
-        if verbose:
-            print(f"Found no lyrics for {title}.")
-        return None
+        try:
+            self.validate_artist(artist, result.artist)
+            self.validate_title(title, result.title)
+        except ValidationError as e:
+            return None
 
-    lyrics = genius.lyrics(result["url"])
-
-    # Skip results when URL is a 404 or lyrics are missing
-    if not lyrics:
-        if verbose:
-            print(f"{title} does not have a valid URL with lyrics. Rejecting.")
-        return None
-
-    result = Song(result, lyrics)
-
-    if not (result and result.lyrics):
-        if verbose:
-            print(f'No Genius lyrics found for "{title}"')
-        return None
-
-    r_artist = _clean_str(result.artist)
-    c_artist = _clean_str(artist)
-    if not (c_artist in r_artist or r_artist in c_artist):
-        if verbose:
-            print(f"Incorrect artist from Genius: {artist} became {result.artist}")
-        return None
-
-    r_title = _clean_str(result.title)
-    c_title = _clean_str(title)
-    if not (c_title in r_title or r_title in c_title):
-        if verbose:
-            print(f"Incorrect title from Genius: {title} became {result.title}")
-        return None
-
-    if verbose:
-        print(f'Result found in Genius for "{title}"')
-    return result.lyrics
+        if self.verbose:
+            print(f'Parsed lyrics for "{title}"')
+        return result.lyrics

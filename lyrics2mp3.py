@@ -4,10 +4,10 @@ import argparse
 import os
 import sys
 
-from parsers import lyrics_az
-from parsers import lyrics_lg
-from parsers import lyrics_lm
-from parsers import lyrics_sl
+from parsers.lyrics_az import LyricsAZ
+from parsers.lyrics_lg import LyricsLG
+from parsers.lyrics_lm import LyricsLM
+from parsers.lyrics_sl import LyricsSL
 
 """
 Lyrics2mp3
@@ -34,7 +34,18 @@ optional.add_argument(
     help="If passed in, will write '...' on files with no lyrics found.",
 )
 optional.add_argument("--genius_token", help="API key for genius.com music database")
-optional.add_argument("--verbose", "-v", action="store_true", help="Lots of debug info")
+optional.add_argument(
+    "--overwrite", action="store_true", help="overwrite existing lyrics"
+)
+optional.add_argument(
+    "--simulate",
+    "-s",
+    action="store_true",
+    help="simulate retrieval but change no files",
+)
+optional.add_argument(
+    "--verbose", "-v", action="count", default=0, help="Level of debug info"
+)
 
 
 args = parser.parse_args()
@@ -56,22 +67,20 @@ if args.m3u is not None:
 
 playlist = args.m3u
 
-lyrics_lg.init_genius(args.genius_token)
+ly_lg = LyricsLG(args.genius_token, verbose=args.verbose)
+ly_az = LyricsAZ(verbose=args.verbose)
+ly_lm = LyricsLM(verbose=args.verbose)
+ly_sl = LyricsSL(verbose=args.verbose)
 
 
 def get_lyrics(artist, title, album_artist=None):
     parsed_lyrics = None
 
-    for parser in [
-        lyrics_lg.lg_request,
-        lyrics_az.az_request,
-        lyrics_lm.lm_request,
-        lyrics_sl.sl_request,
-    ]:
+    for parser in [ly_lg, ly_az, ly_lm, ly_sl]:
         if parsed_lyrics is not None:
             break
 
-        parsed_lyrics = parser(artist, title, verbose=args.verbose)
+        parsed_lyrics = parser.request(artist, title)
 
     # fuzzy match
     if parsed_lyrics is None and "(" in artist or "(" in title:
@@ -116,7 +125,7 @@ def parse_file(file_path):
         err += 1
         return
 
-    if (
+    if not args.overwrite and (
         old_lyrics is not None
         and len(old_lyrics) > 10
         or args.write_on_not_found
@@ -144,10 +153,16 @@ def parse_file(file_path):
     )
     if lyrics is not None:
         audiofile.tags["LYRICS"] = lyrics
-        audiofile.save()
+        # add simulate here
+        if not args.simulate:
+            audiofile.save()
         added_lyrics += 1
+        if args.verbose:
+            print(f"Lyrics found for {search_artist}: {search_title}")
     else:
         no_lyrics_found += 1
+        if args.verbose:
+            print(f"No lyrics found for {search_artist}: {search_title}")
 
 
 def report_progress():
