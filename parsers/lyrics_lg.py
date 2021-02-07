@@ -9,11 +9,9 @@ class LyricsLG(Lyrics):
         super().__init__("Genius", verbose)
         self.genius = lyricsgenius.Genius(token, verbose=True) if token else None
 
-    def request(self, artist, title):
-        if self.genius is None:
-            if self.verbose > 2:
-                print("Token invalid or missing, skipping Genius")
-            return None
+    def parse(self, artist, title):
+        msg = "Token invalid or missing, skipping Genius"
+        self.validate(self.genius, msg, verbose_gte=3)
 
         try:
             response = self.genius.search_songs(f"{artist} {title}")
@@ -26,40 +24,34 @@ class LyricsLG(Lyrics):
         self.validate_lyrics_found(results, title)
 
         # Reject non-songs (Liner notes, track lists, etc.)
+        get_lyrics = self.genius._result_is_lyrics
         result = next(
-            (
-                r["result"]
-                for r in results
-                if self.genius._result_is_lyrics(r["result"]["title"])
-            ),
+            (r["result"] for r in results if get_lyrics(r["result"]["title"])),
             None,
         )
-        if not result:
-            if self.verbose > 1:
-                print(f"No valid Genius result for {title}.")
-            return None
+        self.validate(result, f"No valid Genius result for {title}.", verbose_gte=2)
 
         lyrics = self.genius.lyrics(result["url"])
 
         # Skip results when URL is a 404 or lyrics are missing
-        if not lyrics:
-            if self.verbose > 1:
-                print(f"{title} does not have a valid URL with lyrics. Rejecting.")
-            return None
+        self.validate(lyrics, f"No valid URL with lyrics for {title}", verbose_gte=2)
 
         result = Song(result, lyrics)
 
-        if not (result and result.lyrics):
-            if self.verbose > 1:
-                print(f'No Genius lyrics found for "{title}"')
-            return None
+        self.validate_artist(artist, result.artist)
+        self.validate_title(title, result.title)
 
-        try:
-            self.validate_artist(artist, result.artist)
-            self.validate_title(title, result.title)
-        except ValidationError as e:
-            return None
-
-        if self.verbose:
-            print(f'Parsed lyrics for "{title}"')
         return result.lyrics
+
+    def request(self, artist, title):
+        try:
+            parsed_lyrics = self.parse(artist=artist, title=title)
+        except ValidationError:
+            return None
+
+        if parsed_lyrics and self.verbose:
+            print(f'Parsed lyrics from {self.service} for "{title}"')
+        elif not parsed_lyrics and self.verbose > 1:
+            print(f'Could not parse lyrics from {self.service} for "{title}": ')
+
+        return parsed_lyrics

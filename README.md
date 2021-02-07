@@ -1,27 +1,36 @@
-# lyrics2mp3 
+# lyrics2mp3
 
-Parse lyrics and add them into mp3 files (via id tags).  
-Lyrics can then be viewed on iPhone, iTunes and other players.  
+Parse lyrics and add them into mp3 and m4a files (via id tags).
+Lyrics can then be viewed on iPhone, iTunes and other players.
 
-What script does:  
-1. Scans recursively directory for mp3 files.  
-2. Reads Artist and title from mp3 tag.  
-3. Searches lyrics for each song on azlyrics.com  
-4. Inserts lyrics into mp3 file, or '...' if not found (needed not to skip files)  
+What script does:
+1. Scans directory recursively, or each file in playlist, for music files.
+2. Reads artist and title from music tag.
+3. Searches lyrics for each song on genius.com, azlyrics.com, lyricsgenius.com, songlyrics.com
+4. Inserts lyrics into music file if found (unless simulating).
 
-Installation:  
+Installation:
 
 ```
-pip3 install -r requirements.txt
 git clone https://github.com/spyer/lyrics2mp3.git
+pip3 install -r requirements.txt
 ```
 
-If you have trouble installing, please check if **taglib** library is installed (may have to compile). 
+If you have trouble installing, please check if **taglib** library is installed (may have to compile).
 
-Usage:  
+Usage:
 
 ```
-Required arguments:  
-  --dir DIR          Directory to search for mp3 files
+Required arguments:
+  one of:
+    --dir DIR               Directory to search for music files
+    --m3u PATH              Playlist to search for music files
 
+Optional arguments:
+  --genius_token TOKEN      API token for genius.com music database. Without this token Genius will not be used. Sign up for token at https://genius.com/api-clients
+  --write_on_not_found      Write '...' on files with no lyrics found
+  --overwrite               Overwrite existing lyrics
+  --simulate, -s            Simulate retrieval but change no files
+  --verbose, -v             Level of debug info to display
+  --help                    Show all arguments
 ```

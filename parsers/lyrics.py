@@ -25,6 +25,12 @@ class Lyrics:
         self.service = service
         self.verbose = verbose
 
+    def validate(self, check, msg, verbose_gte=0):
+        if not check:
+            if self.verbose >= verbose_gte:
+                print(msg)
+            raise ValidationError(msg)
+
     def raw_request(self, url):
         resp = requests.get(
             url=url,
@@ -55,11 +61,9 @@ class Lyrics:
     def _validate_error(self, kind, file, found):
         c_file = _clean_str(file)
         c_found = _clean_str(found)
-        if not (c_found in c_file or c_file in c_found):
-            msg = f"Incorrect {kind} from {self.service}: {file} vs {found}"
-            if self.verbose > 1:
-                print(msg)
-            raise ValidationError(msg)
+        chk = c_found in c_file or c_file in c_found
+        msg = f"Incorrect {kind} from {self.service}: {file} vs {found}"
+        self.validate(chk, msg, verbose_gte=2)
 
     def validate_artist(self, artist, found_artist):
         return self._validate_error("artist", artist, found_artist)
@@ -68,11 +72,8 @@ class Lyrics:
         return self._validate_error("title", title, found_title)
 
     def validate_lyrics_found(self, lyrics, title):
-        if lyrics is None:
-            msg = f'Lyrics not found on {self.service} for "{title}"'
-            if self.verbose > 1:
-                print(msg)
-            raise ValidationError(msg)
+        msg = f'Lyrics not found on {self.service} for "{title}"'
+        self.validate(lyrics, msg, verbose_gte=2)
 
     def request(self, url, artist, title):
         soup = self.parse_html(url)

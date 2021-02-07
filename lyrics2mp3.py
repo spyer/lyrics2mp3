@@ -29,22 +29,25 @@ file_source.add_argument("--dir", help="Directory to search for music files")
 file_source.add_argument("--m3u", help="Playlist to search for music files")
 
 optional.add_argument(
+    "--genius_token",
+    help="API token for genius.com music database. Without this token Genius will not be used. Sign up for token at https://genius.com/api-clients",
+)
+optional.add_argument(
     "--write_on_not_found",
     action="store_true",
-    help="If passed in, will write '...' on files with no lyrics found.",
+    help="Write '...' on files with no lyrics found.",
 )
-optional.add_argument("--genius_token", help="API key for genius.com music database")
 optional.add_argument(
-    "--overwrite", action="store_true", help="overwrite existing lyrics"
+    "--overwrite", action="store_true", help="Overwrite existing lyrics in music files"
 )
 optional.add_argument(
     "--simulate",
     "-s",
     action="store_true",
-    help="simulate retrieval but change no files",
+    help="Simulate retrieval but change no files",
 )
 optional.add_argument(
-    "--verbose", "-v", action="count", default=0, help="Level of debug info"
+    "--verbose", "-v", action="count", default=0, help="Level of debug info to display"
 )
 
 
@@ -153,8 +156,9 @@ def parse_file(file_path):
     )
     if lyrics is not None:
         audiofile.tags["LYRICS"] = lyrics
-        # add simulate here
-        if not args.simulate:
+        if args.simulate:
+            print("Simulating, not actually saving lyrics")
+        else:
             audiofile.save()
         added_lyrics += 1
         if args.verbose:
@@ -168,8 +172,11 @@ def parse_file(file_path):
 def report_progress():
     if not args.verbose:
         l_sum = have_lyrics + added_lyrics + no_lyrics_found + err
+        txt = f"{added_lyrics} added, {no_lyrics_found} not found, {err} errored."
+        if not args.overwrite:
+            txt = f"{have_lyrics} existing, {txt}"
         print(
-            f"\r{l_sum} processed: {have_lyrics} existing, {added_lyrics} added, {no_lyrics_found} not found, {err} errored.",
+            f"\r{l_sum} processed: {txt}",
             end="",
         )
 
