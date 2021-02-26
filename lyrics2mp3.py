@@ -88,7 +88,7 @@ def get_lyrics(artist, title, album_artist=None):
     # fuzzy match
     if parsed_lyrics is None and "(" in artist or "(" in title:
         if args.verbose:
-            print("Trying without paretheses")
+            print(f"Trying {title} without parentheses")
         if album_artist:
             artist = album_artist
         elif "(" in artist:
@@ -169,36 +169,46 @@ def parse_file(file_path):
             print(f"No lyrics found for {search_artist}: {search_title}")
 
 
-def report_progress():
-    if not args.verbose:
+def report_progress(inline=False):
         l_sum = have_lyrics + added_lyrics + no_lyrics_found + err
         txt = f"{added_lyrics} added, {no_lyrics_found} not found, {err} errored."
         if not args.overwrite:
             txt = f"{have_lyrics} existing, {txt}"
-        print(
-            f"\r{l_sum} processed: {txt}",
-            end="",
-        )
+
+        txt = f"{l_sum} processed: {txt}"
+        if inline:
+            print(txt)
+        else:
+            print(f"\r{txt}", end="")
 
 
 def file_lyrics(file_path):
     parse_file(file_path)
-    report_progress()
+    if not args.verbose:
+        report_progress(inline=True)
 
-
-if args.dir:
-    for dir_path, _, files in os.walk(args.dir):
-        for file in files:
-            file_lyrics(os.path.join(dir_path, file))
-
-elif args.m3u:
-    with open(args.m3u) as m:
-        for line in m:
-            line = line.strip()
-            if line.upper().startswith("#EXT"):
-                continue
-
-            file_lyrics(line)
-
-if not args.verbose:
+def end_report():
+    if args.verbose:
+        report_progress()
     print()
+
+try:
+    if args.dir:
+        for dir_path, _, files in os.walk(args.dir):
+            for file in files:
+                file_lyrics(os.path.join(dir_path, file))
+
+    elif args.m3u:
+        with open(args.m3u) as m:
+            for line in m:
+                line = line.strip()
+                if line.upper().startswith("#EXT"):
+                    continue
+
+                file_lyrics(line)
+
+except KeyboardInterrupt:
+    pass
+
+end_report()
+
