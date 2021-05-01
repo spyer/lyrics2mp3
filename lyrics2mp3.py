@@ -4,8 +4,10 @@ import argparse
 import os
 import sys
 
-import lyrics_az
-import lyrics_lg
+from parsers.lyrics_az import LyricsAZ
+from parsers.lyrics_lg import LyricsLG
+from parsers.lyrics_lm import LyricsLM
+from parsers.lyrics_sl import LyricsSL
 
 """
 Lyrics2mp3
@@ -27,12 +29,26 @@ file_source.add_argument("--dir", help="Directory to search for music files")
 file_source.add_argument("--m3u", help="Playlist to search for music files")
 
 optional.add_argument(
+    "--genius_token",
+    help="API token for genius.com music database. Without this token Genius will not be used. Sign up for token at https://genius.com/api-clients",
+)
+optional.add_argument(
     "--write_on_not_found",
     action="store_true",
-    help="If passed in, will write '...' on files with no lyrics found.",
+    help="Write '...' on files with no lyrics found.",
 )
-optional.add_argument("--genius_token", help="API key for genius.com music database")
-optional.add_argument("--verbose", "-v", action="store_true", help="Lots of debug info")
+optional.add_argument(
+    "--overwrite", action="store_true", help="Overwrite existing lyrics in music files"
+)
+optional.add_argument(
+    "--simulate",
+    "-s",
+    action="store_true",
+    help="Simulate retrieval but change no files",
+)
+optional.add_argument(
+    "--verbose", "-v", action="count", default=0, help="Level of debug info to display"
+)
 
 
 args = parser.parse_args()
@@ -54,21 +70,25 @@ if args.m3u is not None:
 
 playlist = args.m3u
 
-lyrics_lg.init_genius(args.genius_token)
+ly_lg = LyricsLG(args.genius_token, verbose=args.verbose)
+ly_az = LyricsAZ(verbose=args.verbose)
+ly_lm = LyricsLM(verbose=args.verbose)
+ly_sl = LyricsSL(verbose=args.verbose)
 
 
 def get_lyrics(artist, title, album_artist=None):
-    # LyricsGenius
-    parsed_lyrics = lyrics_lg.lg_request(artist, title, verbose=args.verbose)
+    parsed_lyrics = None
 
-    # AZ Lyrics
-    if parsed_lyrics is None:
-        parsed_lyrics = lyrics_az.az_request(artist, title, verbose=args.verbose)
+    for parser in [ly_lg, ly_az, ly_lm, ly_sl]:
+        if parsed_lyrics is not None:
+            break
+
+        parsed_lyrics = parser.request(artist, title)
 
     # fuzzy match
     if parsed_lyrics is None and "(" in artist or "(" in title:
         if args.verbose:
-            print("Trying without paretheses")
+            print(f"Trying {title} without parentheses")
         if album_artist:
             artist = album_artist
         elif "(" in artist:
@@ -86,30 +106,39 @@ def get_lyrics(artist, title, album_artist=None):
 have_lyrics = 0
 added_lyrics = 0
 no_lyrics_found = 0
+err = 0
 
 
 def parse_file(file_path):
     global have_lyrics
     global added_lyrics
     global no_lyrics_found
+    global err
 
     ext = os.path.splitext(file_path)[-1].lower()
     if ext not in (".mp3", ".m4a"):
         return
 
-    audiofile = taglib.File(file_path)
-    old_lyrics = audiofile.tags.get("LYRICS", [""])[0]
+    try:
+        audiofile = taglib.File(file_path)
+        old_lyrics = audiofile.tags.get("LYRICS", [""])[0]
+    except OSError as e:
+        if args.verbose:
+            print(f"Could not read {file_path}, skipping")
+        err += 1
+        return
 
-    if (
+    if not args.overwrite and (
         old_lyrics is not None
         and len(old_lyrics) > 10
         or args.write_on_not_found
         and old_lyrics == "..."
     ):
         if args.verbose:
-            print(f"Lyrics found in music file: {file_path} skipping")
+            print(f"Lyrics found in music file: {file_path}, skipping")
         have_lyrics += 1
         return
+
     try:
         search_album_artist = audiofile.tags.get("ALBUMARTIST")
         if search_album_artist:
@@ -119,6 +148,7 @@ def parse_file(file_path):
     except KeyError:
         if args.verbose:
             print(f"No artist or title in music file {file_path}")
+        err += 1
         return
 
     lyrics = get_lyrics(
@@ -126,28 +156,59 @@ def parse_file(file_path):
     )
     if lyrics is not None:
         audiofile.tags["LYRICS"] = lyrics
-        audiofile.save()
+        if args.simulate:
+            print("Simulating, not actually saving lyrics")
+        else:
+            audiofile.save()
         added_lyrics += 1
+        if args.verbose:
+            print(f"Lyrics found for {search_artist}: {search_title}")
     else:
         no_lyrics_found += 1
+        if args.verbose:
+            print(f"No lyrics found for {search_artist}: {search_title}")
 
+
+def report_progress(inline=False):
+        l_sum = have_lyrics + added_lyrics + no_lyrics_found + err
+        txt = f"{added_lyrics} added, {no_lyrics_found} not found, {err} errored."
+        if not args.overwrite:
+            txt = f"{have_lyrics} existing, {txt}"
+
+        txt = f"{l_sum} processed: {txt}"
+        if inline:
+            print(txt)
+        else:
+            print(f"\r{txt}", end="")
+
+
+def file_lyrics(file_path):
+    parse_file(file_path)
     if not args.verbose:
-        print(
-            f"\r{have_lyrics + added_lyrics + no_lyrics_found} processed: {have_lyrics} existing, {added_lyrics} added, {no_lyrics_found} not found.",
-            end="",
-        )
+        report_progress(inline=True)
 
+def end_report():
+    if args.verbose:
+        report_progress()
+    print()
 
-if args.dir:
-    for dir_path, _, files in os.walk(args.dir):
-        for file in files:
-            parse_file(os.path.join(dir_path, file))
+try:
+    if args.dir:
+        for dir_path, _, files in os.walk(args.dir):
+            for file in files:
+                file_lyrics(os.path.join(dir_path, file))
 
-elif args.m3u:
-    with open(args.m3u) as m:
-        for line in m:
-            line = line.strip()
-            if line.upper().startswith("#EXT"):
-                continue
+    elif args.m3u:
+        with open(args.m3u) as m:
+            for line in m:
+                line = line.strip()
+                if line.upper().startswith("#EXT"):
+                    continue
 
-            parse_file(line)
+                file_lyrics(line)
+
+except KeyboardInterrupt:
+    pass
+
+end_report()
+
