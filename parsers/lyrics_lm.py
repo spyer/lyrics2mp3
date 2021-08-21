@@ -1,7 +1,7 @@
 from bs4 import element
 
 
-from .lyrics import Lyrics, ValidationError
+from .lyrics import Lyrics
 
 
 class LyricsLM(Lyrics):
@@ -26,7 +26,7 @@ class LyricsLM(Lyrics):
         parsed_lyrics = "\n".join(txt)
         return parsed_lyrics or None
 
-    def parse(self, soup, artist, title):
+    def parse(self, soup, title, artist=None):
         found_td = soup.find("ul", class_="search").find("a")
         self.validate_lyrics_found(found_td, title)
 
@@ -41,7 +41,8 @@ class LyricsLM(Lyrics):
                 print("Can't parse song title: ", e)
             return None
 
-        self.validate_artist(artist, found_artist)
+        if artist:
+            self.validate_artist(artist, found_artist)
         self.validate_title(title, found_title)
 
         href = self.domain + found_td["href"]
@@ -49,6 +50,7 @@ class LyricsLM(Lyrics):
         parsed_lyrics = self.validate_parse_song(href, title)
         return parsed_lyrics
 
-    def request(self, artist, title):
-        url = f"{self.domain}/search.php?k={artist}+{title}".replace(" ", "+")
-        return super().request(url, artist, title)
+    def request(self, title, artist=None):
+        artist_q = f"{artist}+" if artist else ""
+        url = f"{self.domain}/search.php?k={artist_q}{title}".replace(" ", "+")
+        return super().request(url, title, artist=artist)

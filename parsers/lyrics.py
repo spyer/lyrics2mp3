@@ -7,8 +7,8 @@ class ValidationError(Exception):
     pass
 
 
-cruft = re.compile("[\.,\[\]\{\}'’]")
-and_ = re.compile("[\+&]")
+cruft = re.compile(r"[\.,\[\]\{\}'’]")
+and_ = re.compile(r"[\+&]")
 
 
 def _clean_str(in_str):
@@ -75,10 +75,10 @@ class Lyrics:
         msg = f'Lyrics not found on {self.service} for "{title}"'
         self.validate(lyrics, msg, verbose_gte=2)
 
-    def request(self, url, artist, title):
+    def request(self, url, title, artist=None):
         soup = self.parse_html(url)
         try:
-            parsed_lyrics = self.parse(soup, artist=artist, title=title)
+            parsed_lyrics = self.parse(soup, title=title, artist=artist)
         except ValidationError:
             return None
 

@@ -30,6 +30,7 @@ Optional arguments:
   --genius_token TOKEN      API token for genius.com music database. Without this token Genius will not be used. Sign up for token at https://genius.com/api-clients
   --write_on_not_found      Write '...' on files with no lyrics found
   --overwrite               Overwrite existing lyrics
+  --ignore_artist           Ignore files' artists, look at song name only 
   --simulate, -s            Simulate retrieval but change no files
   --verbose, -v             Level of debug info to display
   --help                    Show all arguments
