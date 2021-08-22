@@ -1,4 +1,4 @@
 beautifulsoup4
 requests>=2
 pytaglib
-lyricsgenius>=2.0.2
+lyricsgenius>=3.0.1,<4.0
