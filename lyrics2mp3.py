@@ -21,7 +21,6 @@ parser = argparse.ArgumentParser(
 )
 parser._action_groups.pop()
 
-# required = parser.add_argument_group("required arguments")
 optional = parser.add_argument_group("optional arguments")
 file_source = parser.add_mutually_exclusive_group(required=True)
 
@@ -44,6 +43,11 @@ optional.add_argument(
     "--ignore_artist",
     action="store_true",
     help="Ignore files' artists, look at song name only",
+)
+optional.add_argument(
+    "--manually_confirm",
+    action="store_true",
+    help="Manually confirm any lyrics changes",
 )
 optional.add_argument(
     "--simulate",
@@ -71,12 +75,12 @@ if args.m3u is not None:
         print(f'Playlist "{args.m3u}" is not M3U format.')
         sys.exit(1)
 
-playlist = args.m3u
-
-ly_lg = LyricsLG(args.genius_token, verbose=args.verbose)
-ly_az = LyricsAZ(verbose=args.verbose)
-ly_lm = LyricsLM(verbose=args.verbose)
-ly_sl = LyricsSL(verbose=args.verbose)
+ly_lg = LyricsLG(
+    args.genius_token, verbose=args.verbose, manually_confirm=args.manually_confirm
+)
+ly_az = LyricsAZ(verbose=args.verbose, manually_confirm=args.manually_confirm)
+ly_lm = LyricsLM(verbose=args.verbose, manually_confirm=args.manually_confirm)
+ly_sl = LyricsSL(verbose=args.verbose, manually_confirm=args.manually_confirm)
 
 
 def get_lyrics(title, artist=None, album_artist=None):
@@ -89,7 +93,7 @@ def get_lyrics(title, artist=None, album_artist=None):
         parsed_lyrics = parser.request(title, artist=artist)
 
     # fuzzy match
-    if parsed_lyrics is None and "(" in artist or "(" in title:
+    if parsed_lyrics is None and (artist and "(" in artist or title and "(" in title):
         if args.verbose:
             print(f"Trying {title} without parentheses")
         if album_artist:

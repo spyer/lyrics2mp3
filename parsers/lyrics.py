@@ -21,9 +21,10 @@ class Lyrics:
         "Chrome/62.0.3239.84 Safari/537.36"
     }
 
-    def __init__(self, service, verbose=False):
+    def __init__(self, service, verbose=False, manually_confirm=False):
         self.service = service
         self.verbose = verbose
+        self.manually_confirm = manually_confirm
 
     def validate(self, check, msg, verbose_gte=0):
         if not check:
@@ -56,6 +57,7 @@ class Lyrics:
             if self.verbose > 1:
                 print(f'Could not parse lyrics from {self.service} for "{title}": ', e)
             return None
+
         return parsed_lyrics
 
     def _validate_error(self, kind, file, found):
@@ -75,12 +77,25 @@ class Lyrics:
         msg = f'Lyrics not found on {self.service} for "{title}"'
         self.validate(lyrics, msg, verbose_gte=2)
 
+    def validate_user_wants_lyrics(self, parsed_lyrics, title):
+        if not self.manually_confirm or not parsed_lyrics:
+            return parsed_lyrics
+
+        print(f"\nLyrics found for {title} on {self.service}:")
+        print(parsed_lyrics)
+        accept_ly = input("Use these lyrics? (y/N)").lower()
+        if accept_ly == "y":
+            return parsed_lyrics
+        return None
+
     def request(self, url, title, artist=None):
         soup = self.parse_html(url)
         try:
             parsed_lyrics = self.parse(soup, title=title, artist=artist)
         except ValidationError:
             return None
+
+        parsed_lyrics = self.validate_user_wants_lyrics(parsed_lyrics, title)
 
         if parsed_lyrics and self.verbose:
             print(f'Parsed lyrics from {self.service} for "{title}"')

@@ -5,8 +5,8 @@ from .lyrics import Lyrics, ValidationError, _clean_str
 
 
 class LyricsLG(Lyrics):
-    def __init__(self, token, verbose=False):
-        super().__init__("Genius", verbose)
+    def __init__(self, token, **kwargs):
+        super().__init__("Genius", **kwargs)
         self.genius = lyricsgenius.Genius(token, verbose=True) if token else None
 
     def parse(self, title, artist=None):
@@ -58,6 +58,8 @@ class LyricsLG(Lyrics):
             parsed_lyrics = self.parse(artist=artist, title=title)
         except ValidationError:
             return None
+
+        parsed_lyrics = self.validate_user_wants_lyrics(parsed_lyrics, title)
 
         if parsed_lyrics and self.verbose:
             print(f'Parsed lyrics from {self.service} for "{title}"')
