@@ -190,9 +190,9 @@ def report_progress(inline=False):
 
     txt = f"{l_sum} processed: {txt}"
     if inline:
-        print(txt)
-    else:
         print(f"\r{txt}", end="")
+    else:
+        print(txt)
 
 
 def file_lyrics(file_path):
