@@ -1,5 +1,4 @@
 import lyricsgenius
-from lyricsgenius.song import Song
 
 from .lyrics import Lyrics, ValidationError, _clean_str
 
@@ -44,8 +43,7 @@ class LyricsLG(Lyrics):
 
         # Skip results when URL is a 404 or lyrics are missing
         self.validate(lyrics, f"No valid URL with lyrics for {title}", verbose_gte=2)
-
-        result = Song(result, lyrics)
+        result = lyricsgenius.genius.Song(self.genius, result, lyrics=lyrics)
 
         if artist:
             self.validate_artist(artist, result.artist)
