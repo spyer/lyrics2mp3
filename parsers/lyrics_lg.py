@@ -1,6 +1,82 @@
+import re
+
 import lyricsgenius
 
 from .lyrics import Lyrics, ValidationError, _clean_str
+
+
+def remove_extra_spaces(s):
+    return " ".join(s.split())
+
+
+def replace_apostrophe(s):
+    return s.replace("’", "'")
+
+
+def remove_zero_width_space(s):
+    return s.replace("\u200b", "")
+
+
+def remove_right_to_left_mark(s):
+    return s.replace("\u200f", "")
+
+
+def scrub_string(s):
+    """
+    Removes opinionated unwanted characters from
+    string, namely:
+        - zero width spaces '\u200b' ---> ''
+        - apostrophe '’' ---> ''
+        - extra spaces '    ' ---> ' '
+    """
+    s = remove_zero_width_space(s)
+    s = remove_right_to_left_mark(s)
+    s = replace_apostrophe(s)
+    s = remove_extra_spaces(s)
+    return s
+
+
+def replace_br(s):
+    s = s.replace("<br/>", "\n")
+    return s
+
+
+def regexp_replace(s, pattern, repl=""):
+    found = re.findall(pattern, s, flags=re.IGNORECASE)
+    for f in found:
+        s = s.replace(f, repl)
+    return s
+
+
+def remove_embded(s):
+    return regexp_replace(s, r"Embed\d*$")
+
+
+def remove_see_live_ad(s):
+    return regexp_replace(s, r"^See .+ Live")
+
+
+def remove_contributors(s):
+    return regexp_replace(s, r"^\d+ Contributor.+ Lyrics")
+
+
+def remove_also_like(s):
+    s = regexp_replace(s, r"^You might also like", repl="\n")
+    return regexp_replace(s, r"You might also like$", repl="\n")
+
+
+def clean_line(s):
+    for fn in [
+        scrub_string,
+        remove_contributors,
+        remove_also_like,
+        remove_see_live_ad,
+        remove_embded,
+        replace_br,
+    ]:
+        s = fn(s)
+
+    return s
 
 
 class LyricsLG(Lyrics):
@@ -49,7 +125,9 @@ class LyricsLG(Lyrics):
             self.validate_artist(artist, result.artist)
         self.validate_title(title, result.title)
 
-        return result.lyrics
+        lyrics = "\n".join([clean_line(s) for s in result.lyrics.split("\n")])
+
+        return lyrics
 
     def request(self, title, artist=None):
         try:
