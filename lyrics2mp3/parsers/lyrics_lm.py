@@ -5,8 +5,8 @@ from .lyrics import Lyrics
 
 
 class LyricsLM(Lyrics):
-    def __init__(self, verbose=False):
-        super().__init__("LyricsMania", verbose)
+    def __init__(self, **kwargs):
+        super().__init__("LyricsMania", **kwargs)
         self.domain = "https://www.lyricsmania.com"
 
     def parse_single_song(self, href):

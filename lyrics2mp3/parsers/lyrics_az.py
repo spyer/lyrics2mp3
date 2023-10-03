@@ -2,8 +2,8 @@ from .lyrics import Lyrics
 
 
 class LyricsAZ(Lyrics):
-    def __init__(self, verbose=False):
-        super().__init__("azlyrics", verbose)
+    def __init__(self, **kwargs):
+        super().__init__("azlyrics", **kwargs)
 
     def parse_single_song(self, href):
         soup = self.parse_html(href)

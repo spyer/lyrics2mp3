@@ -2,8 +2,8 @@ from .lyrics import Lyrics
 
 
 class LyricsSL(Lyrics):
-    def __init__(self, verbose=False):
-        super().__init__("SongLyrics", verbose)
+    def __init__(self, **kwargs):
+        super().__init__("SongLyrics", **kwargs)
 
     def parse_single_song(self, href):
         soup = self.parse_html(href)
